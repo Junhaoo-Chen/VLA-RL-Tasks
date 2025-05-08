@@ -10,9 +10,9 @@ from mani_skill.agents.robots import Fetch, Panda
 from mani_skill.utils.scene_builder.table import TableSceneBuilder
 from mani_skill.sensors.camera import CameraConfig
 
-# geometry (half-size, metre) & colours 半边长
-BLOCK_SIZE = [0.025, 0.025, 0.025]      # 5 cm cube
-CARD_SIZE  = [0.06,  0.09,  0.002]      # thin roof
+# geometry (half-size, metre) & colours
+BLOCK_SIZE = [0.025, 0.025, 0.025]      # half-size of a 5 cm cube
+CARD_SIZE  = [0.06,  0.09,  0.002]      # half-size of a thin card (12x18 cm)
 COLORS = {
     "blue":  [0.15, 0.35, 0.9, 1.0],
     "green": [0.15, 0.8,  0.3, 1.0],
@@ -20,12 +20,13 @@ COLORS = {
     "white": [1.0,  1.0,  1.0, 1.0],
 }
 
-# height checkpoints（中心坐标）
+# height checkpoints (center coordinates)
 H_BLUE  = BLOCK_SIZE[2]                                           # 0.025
 H_GREEN = H_BLUE  + BLOCK_SIZE[2]*2                               # 0.075
 H_CARD  = H_GREEN + BLOCK_SIZE[2]   + CARD_SIZE[2]                # 0.102
 H_RED   = H_CARD  + CARD_SIZE[2]    + BLOCK_SIZE[2]               # 0.129
 
+# Tolerance thresholds
 XY_BLOCK_TOL  = BLOCK_SIZE[0] * 0.8   # 2.0 cm
 XY_CARD_TOL   = CARD_SIZE[0]        # 2.5 cm   
 Z_BLOCK_TOL   = BLOCK_SIZE[2] * 0.5   # 1.25 cm
@@ -35,11 +36,11 @@ Z_CARD_TOL    = CARD_SIZE[2]   # 0.2 cm
 @register_env("ColorRoofStack-v1", max_episode_steps=150)
 class ColorRoofStackEnv(BaseEnv):
     """
-    Task: 造一个小塔
-      1. 将蓝色方块放到目标位置（标黄）
-      2. 把绿色方块叠在蓝色上
-      3. 把白色卡片水平盖在绿色方块顶面
-      4. 把红色方块放到卡片正中央
+    Task: Build a small structure
+      1. Place the blue block at the goal location (yellow marker)
+      2. Stack the green block on top of the blue block
+      3. Lay the white card flat on the green block top face
+      4. Place the red block in the center of the card
     """
     SUPPORTED_ROBOTS = ["panda", "fetch"]
     agent: Union[Panda, Fetch]
@@ -81,8 +82,7 @@ class ColorRoofStackEnv(BaseEnv):
         builder.initial_pose = sapien.Pose(p=[0, 0, CARD_SIZE[2]+0.3], q=[1, 0, 0, 0])
         self.card = builder.build(name="card_roof")
 
-        # 目标区域可视化 (半透明黄矩形)
-        # 这只是一个标记，没有碰撞
+        # Visual marker for the goal area (semi-transparent yellow rectangle), no collision
         builder = self.scene.create_actor_builder()
         builder.add_box_visual(half_size=[BLOCK_SIZE[0], BLOCK_SIZE[1], 0.001],
                                material=sapien.render.RenderMaterial(base_color=[1, 1, 0, 0.3]))
@@ -94,14 +94,14 @@ class ColorRoofStackEnv(BaseEnv):
         self.table_scene.initialize(env_idx)
         b, device = len(env_idx), self.device
 
-        # 随机目标 xy（桌面 25 cm 方区域）
+        # Randomize goal position in a 0.25 m square area
         goal = torch.zeros((b, 3), device=device)
         goal[:, :2] = (torch.rand((b, 2), device=device) - 0.5) * 0.25
         goal[:, 2]  = H_BLUE
         self.goal_position = goal                      # (b,3)
         self.goal_marker.set_pose(Pose.create_from_pq(p=goal, q=[1, 0, 0, 0]))
 
-        # helper: 随机生成 pose
+        # Helper function to generate random pose at a given height z
         def rand_pose(z):
             pos = torch.zeros((b, 3), device=device)
             pos[:, :2] = (torch.rand((b, 2), device=device) - 0.5) * 0.35
@@ -113,7 +113,7 @@ class ColorRoofStackEnv(BaseEnv):
         self.blocks["red"].set_pose(rand_pose(BLOCK_SIZE[2]))
         self.card.set_pose(rand_pose(CARD_SIZE[2]))
 
-        # 清零速度
+        # Zero out velocities to start from rest
         for actor in [*self.blocks.values(), self.card]:
             actor.set_linear_velocity(torch.zeros((b, 3), device=device))
             actor.set_angular_velocity(torch.zeros((b, 3), device=device))
@@ -134,30 +134,30 @@ class ColorRoofStackEnv(BaseEnv):
     def evaluate(self):
         device = self.device
         b = self.num_envs
-        # 收集所有方块和卡片的当前中心位置（批量 b）
+        # Collect block and card centers for each environment
         p = {k: v.pose.p for k, v in self.blocks.items()}   # {"blue":(b×3), ...}
-        # p["blue"][i] = [x_i, y_i, z_i] 表示第 i 个环境里蓝色方块中心的三维坐标。
+        # p["blue"][i] = [x_i, y_i, z_i] Represents the three-dimensional coordinates of the center of the blue square in the i-th environment.
         p_card = self.card.pose.p                           # (b×3)
         goal_xy = self.goal_position[:, :2]                 # (b×2)
 
-        # 坐标约束：平面距离 < XY_TOL 且 垂直距离在 < Z_TOL
-        # 1 蓝方块到目标
+        # Check horizontal and vertical tolerances for each step
+        # 1 blue block at goal
         blue_ok = (torch.linalg.norm(p["blue"][:, :2] - goal_xy, dim=-1) < XY_BLOCK_TOL) & \
                   (torch.abs(p["blue"][:, 2] - H_BLUE) < Z_BLOCK_TOL)
 
-        # 2 绿叠蓝
+        # 2 green block on blue
         green_ok = (torch.linalg.norm(p["green"][:, :2] - p["blue"][:, :2], dim=-1) < XY_BLOCK_TOL) & \
                    (torch.abs(p["green"][:, 2] - H_GREEN) < Z_BLOCK_TOL)
 
-        # 3 卡片盖绿
+        # 3 card on green
         card_ok = (torch.linalg.norm(p_card[:, :2] - p["green"][:, :2], dim=-1) < XY_CARD_TOL) & \
                   (torch.abs(p_card[:, 2] - H_CARD) < Z_CARD_TOL)
 
-        # 4 红块放卡
+        # 4 red block on card
         red_ok = (torch.linalg.norm(p["red"][:, :2] - p_card[:, :2], dim=-1) < XY_BLOCK_TOL) & \
                  (torch.abs(p["red"][:, 2] - H_RED) < Z_BLOCK_TOL)
 
-        # 成功条件：四项均满足
+        # success criteria
         success = blue_ok & green_ok & card_ok & red_ok
         return dict(success=success,
                     blue_at_goal=blue_ok,
@@ -165,15 +165,15 @@ class ColorRoofStackEnv(BaseEnv):
                     card_on_green=card_ok,
                     red_on_roof=red_ok)
 
-    # dense reward（简单 shaping）
+    # Dense reward shaping
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
         device = self.device
         reward = torch.zeros(self.num_envs, device=device)
 
-        # 完成 +10
+        # complete +10
         reward = torch.where(info["success"], reward + 10.0, reward)
 
-        # 距离 shaping（exp 距离）计算四段子目标的平面距离
+        # Calculate the planar distance of four sub - target segments for the shaping (exp distance) calculation
         p = {k: v.pose.p for k, v in self.blocks.items()}
         p_card = self.card.pose.p
         goal_xy = self.goal_position[:, :2]
@@ -185,7 +185,7 @@ class ColorRoofStackEnv(BaseEnv):
             torch.linalg.norm(p["red"][:, :2]  - p_card[:, :2], dim=-1),        # red→card
         ], dim=0)
 
-        # 不同子目标的 shaping 强度
+        # The shaping intensity of different sub - goals
         scales = torch.tensor([0.3, 0.3, 0.2, 0.2], device=device)
         
         reward += (torch.exp(-10.0 * dists) * scales[:, None]).sum(dim=0)
