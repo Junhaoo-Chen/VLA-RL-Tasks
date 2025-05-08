@@ -10,7 +10,7 @@ from mani_skill.agents.robots import Fetch, Panda
 from mani_skill.utils.scene_builder.table import TableSceneBuilder
 from mani_skill.sensors.camera import CameraConfig
 
-# geometry (half-size, metre) & colours
+# geometry (half-size, metre) & colours 半边长
 BLOCK_SIZE = [0.025, 0.025, 0.025]      # 5 cm cube
 CARD_SIZE  = [0.06,  0.09,  0.002]      # thin roof
 COLORS = {
@@ -25,8 +25,11 @@ H_BLUE  = BLOCK_SIZE[2]                                           # 0.025
 H_GREEN = H_BLUE  + BLOCK_SIZE[2]*2                               # 0.075
 H_CARD  = H_GREEN + BLOCK_SIZE[2]   + CARD_SIZE[2]                # 0.102
 H_RED   = H_CARD  + CARD_SIZE[2]    + BLOCK_SIZE[2]               # 0.129
-XY_TOL  = BLOCK_SIZE[0]*1.2   # 3 cm
-Z_TOL   = BLOCK_SIZE[2]*0.7   # 1.7 cm
+
+XY_BLOCK_TOL  = BLOCK_SIZE[0] * 0.8   # 2.0 cm
+XY_CARD_TOL   = CARD_SIZE[0]        # 2.5 cm   
+Z_BLOCK_TOL   = BLOCK_SIZE[2] * 0.5   # 1.25 cm
+Z_CARD_TOL    = CARD_SIZE[2]   # 0.2 cm
 
 
 @register_env("ColorRoofStack-v1", max_episode_steps=150)
@@ -133,25 +136,26 @@ class ColorRoofStackEnv(BaseEnv):
         b = self.num_envs
         # 收集所有方块和卡片的当前中心位置（批量 b）
         p = {k: v.pose.p for k, v in self.blocks.items()}   # {"blue":(b×3), ...}
+        # p["blue"][i] = [x_i, y_i, z_i] 表示第 i 个环境里蓝色方块中心的三维坐标。
         p_card = self.card.pose.p                           # (b×3)
         goal_xy = self.goal_position[:, :2]                 # (b×2)
 
-        # 坐标约束：平面距离 < XY_TOL 且 垂直高度在 [H_BLUE±Z_TOL]
+        # 坐标约束：平面距离 < XY_TOL 且 垂直距离在 < Z_TOL
         # 1 蓝方块到目标
-        blue_ok = (torch.linalg.norm(p["blue"][:, :2] - goal_xy, dim=-1) < XY_TOL) & \
-                  (torch.abs(p["blue"][:, 2] - H_BLUE) < Z_TOL)
+        blue_ok = (torch.linalg.norm(p["blue"][:, :2] - goal_xy, dim=-1) < XY_BLOCK_TOL) & \
+                  (torch.abs(p["blue"][:, 2] - H_BLUE) < Z_BLOCK_TOL)
 
         # 2 绿叠蓝
-        green_ok = (torch.linalg.norm(p["green"][:, :2] - p["blue"][:, :2], dim=-1) < XY_TOL) & \
-                   (torch.abs(p["green"][:, 2] - H_GREEN) < Z_TOL)
+        green_ok = (torch.linalg.norm(p["green"][:, :2] - p["blue"][:, :2], dim=-1) < XY_BLOCK_TOL) & \
+                   (torch.abs(p["green"][:, 2] - H_GREEN) < Z_BLOCK_TOL)
 
         # 3 卡片盖绿
-        card_ok = (torch.linalg.norm(p_card[:, :2] - p["green"][:, :2], dim=-1) < XY_TOL) & \
-                  (torch.abs(p_card[:, 2] - H_CARD) < Z_TOL)
+        card_ok = (torch.linalg.norm(p_card[:, :2] - p["green"][:, :2], dim=-1) < XY_CARD_TOL) & \
+                  (torch.abs(p_card[:, 2] - H_CARD) < Z_CARD_TOL)
 
         # 4 红块放卡
-        red_ok = (torch.linalg.norm(p["red"][:, :2] - p_card[:, :2], dim=-1) < XY_TOL) & \
-                 (torch.abs(p["red"][:, 2] - H_RED) < Z_TOL)
+        red_ok = (torch.linalg.norm(p["red"][:, :2] - p_card[:, :2], dim=-1) < XY_BLOCK_TOL) & \
+                 (torch.abs(p["red"][:, 2] - H_RED) < Z_BLOCK_TOL)
 
         # 成功条件：四项均满足
         success = blue_ok & green_ok & card_ok & red_ok
