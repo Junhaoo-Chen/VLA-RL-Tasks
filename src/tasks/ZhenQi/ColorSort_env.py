@@ -86,7 +86,7 @@ class ColorSortEnv(BaseEnv):
             type = object.name.split("_")[0]
             bin_center = torch.tensor(self.bin_locations[type])
             dist = torch.norm(object.pose.p[:, :2] - bin_center[:2], dim=1)
-            success &= (dist < 0.05)  
+            success &= (dist < 0.05)   #if all pass by dist<0.05, show success
         return {"success": success}
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
@@ -96,7 +96,7 @@ class ColorSortEnv(BaseEnv):
             type = object.name.split("_")[0]
             bin_center = torch.tensor(self.bin_locations[type])
             dist = torch.norm(object.pose.p[:, :2] - bin_center[:2], dim=1)
-            reward += 1 - torch.tanh(5 * dist)  
+            reward += 1 - torch.tanh(5 * dist)  #reward function by sum all the reward
         reward[info["success"]] = 15.0  
         return reward
     
