@@ -10,10 +10,6 @@ from mani_skill.agents.robots import Fetch, Panda
 from mani_skill.utils.scene_builder.table import TableSceneBuilder
 from mani_skill.sensors.camera import CameraConfig
 
-# !!!TODO：adjust the size of the cube, plane and the random positon to make the env work better
-
-
-
 
 CUBE_SIZE = [0.02, 0.02, 0.02] # half-sizes for x, y, z (m)
 PLANE_RADIUS = 0.08
