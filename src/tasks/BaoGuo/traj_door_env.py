@@ -11,6 +11,13 @@ from mani_skill.utils.scene_builder.table import TableSceneBuilder
 from mani_skill.sensors.camera import CameraConfig
 from scipy.spatial.transform import Rotation as R
 
+###
+###
+### ENV: TrajDoor-v1
+
+###
+###
+
 
 HANDLE_SIZE = [0.2, 0.02, 0.1]  # Size of the door
 FRAME_SIZE = [0.5, 0.4, 0.01]  # Size of the door frame

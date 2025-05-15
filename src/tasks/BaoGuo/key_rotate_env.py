@@ -10,8 +10,12 @@ from mani_skill.agents.robots import Fetch, Panda
 from mani_skill.utils.scene_builder.table import TableSceneBuilder
 from mani_skill.sensors.camera import CameraConfig
 
-HANDLE_SIZE = [0.04, 0.04, 0.06]  # Size of the door
-FRAME_SIZE = [0.1, 0.05, 0.15]  # Size of the door frame
+#####
+##### !!!!!
+##### INCOMPLETE 
+##### !!!!!
+#####
+
 
 @register_env("KeyRotate-v1", max_episode_steps=100)
 class KeyRotateEnv(BaseEnv):
