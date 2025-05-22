@@ -22,7 +22,7 @@ class KeyRotateEnv(BaseEnv):
         Goal: focus on the
         
         Robot: Panda
-        Object: Retangle-liked object, a hollow object
+        Object: Retangle-liked object as key , a hollow object as the keyhold
         Scene: Tabletop
         Action: joint position / trajectory
     """
@@ -140,7 +140,12 @@ class KeyRotateEnv(BaseEnv):
         return obs
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
-        """Compute a dense reward signal to guide learning"""
+        """Reward function for the task
+            The reward is based on the position and pose of the key
+            For each sub-goal achieved, it will receive a reward respectively
+            for incomplete sub-goal like rotate to goal pose, it will receive a reward inversely proportional to the distance to the goal
+            
+        """
         with torch.device(self.device):
             # Initialize reward as a 1D tensor with shape (self.num_envs,)
             reward = torch.zeros(self.num_envs, device=self.device)
@@ -150,10 +155,10 @@ class KeyRotateEnv(BaseEnv):
             rotated_correctly = info["rotated_correctly"]
             # Reward for being inside the box
             if inside_box:
-                reward += 5.0
+                reward += 7.0
             # Reward for being rotated correctly
             if rotated_correctly:
-                reward += 5.0
+                reward += 3.0
             # Reward for being close to the goal position
             angle_to_goal = info["angle_to_goal"]
             reward += 5.0 / (1.0 + angle_to_goal.view(-1))
